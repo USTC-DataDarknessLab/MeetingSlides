@@ -1,0 +1,414 @@
+\documentclass{beamer}
+\usepackage{ctex, hyperref}
+\usepackage[T1]{fontenc}
+
+% other packages
+\usepackage{latexsym,amsmath,xcolor,multicol,booktabs,calligra}
+\usepackage{graphicx,pstricks,listings,stackengine}
+
+\author{Chen, Chang (Peking University) and Li, Xiuhong* (Peking University) and Zhu, Qianchao and Duan, Jiangfei and Sun, Peng and Zhang, Xingcheng and Yang, Chao}
+\title{Centauri}
+% \subtitle{Cospa group meeting}
+\subtitle{Enabling Efficient Scheduling for Communication-Computation Overlap in Large Model Training via Communication Partitioning}
+\institute{PKU, CUHK, SHANGHAI AI LAB}
+\date{December, 5th}
+\usepackage{USTC_beamer}
+
+% \renewcommand{\familydefault}{\rmdefault}
+
+
+% defs
+\def\cmd#1{\texttt{\color{red}\footnotesize $\backslash$#1}}
+\def\env#1{\texttt{\color{blue}\footnotesize #1}}
+\definecolor{deepblue}{rgb}{0,0,0.5}
+\definecolor{deepred}{rgb}{0.6,0,0}
+\definecolor{deepgreen}{rgb}{0,0.5,0}
+\definecolor{halfgray}{gray}{0.55}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\bfseries\color{deepblue},
+    emphstyle=\ttfamily\color{deepred},    % Custom highlighting style
+    stringstyle=\color{deepgreen},
+    numbers=left,
+    numberstyle=\small\color{halfgray},
+    rulesepcolor=\color{red!20!green!20!blue!20},
+    frame=shadowbox,
+}
+
+
+\begin{document}
+
+% \kaishu
+\renewcommand{\figurename}{Fig.} % Comment this out you will have “图1”
+
+% logo
+\begin{frame}
+    \titlepage
+    % \begin{figure}[htpb]
+    %     \begin{center}
+    %         \includegraphics[width=0.2\linewidth]{pic/ustc_logo.pdf}
+    %     \end{center}
+    % \end{figure}
+\end{frame}
+
+\begin{frame}
+    \tableofcontents[sectionstyle=show,subsectionstyle=show/shaded/hide,subsubsectionstyle=show/shaded/hide]
+\end{frame}
+
+
+\section{Background}
+
+\begin{frame}{Background-Parallelism Paradigms}
+    \begin{itemize}
+        \item Data Parallelism (DP)
+        \item Tensor Parallelism (TP)
+        \item Pipeline Parallelism (PP)
+        \item {\color{red}Fully Sharded Data Parallelism (FSDP)}
+        \item Zero
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Background-Parallelism Paradigms-DDP}
+    
+    \begin{itemize}
+        \item Distributed Data Parallelism (DDP)
+        \begin{itemize}
+            \item The entire model's parameters/gradients/optimizer states are stored on each GPU
+        \end{itemize}
+    \end{itemize}
+    \begin{figure}[h]
+        \centering
+        \includegraphics[height = 0.7\textheight]{pic/figure1.png}
+    \end{figure}
+\end{frame}
+
+\begin{frame}{Background-Parallelism Paradigms-FSDP}
+    
+    \begin{itemize}
+        \item Fully Sharded Data Parallelism (FSDP)
+        \begin{itemize}
+            \item Each GPU only stores a portion of the model's parameters/gradients/optimizer states
+            \item High communication cost but overlap-friendly
+        \end{itemize}
+    \end{itemize}
+    \begin{figure}[h]
+        \centering
+        \includegraphics[height = 0.7\textheight]{pic/figure2.png}
+    \end{figure}
+\end{frame}
+
+\begin{frame}{Collective Communication}
+$P$ devices for
+each volume $D$
+    \begin{itemize}
+        \item \textbf{Allreduce} aggregates data from different ranks by applying a reduction operation for a result of volume $D$.
+        \item \textbf{Reduce-Scatter} reduces input values across ranks, with each rank receiving a subpart of the result corresponding to a volume of $\frac{D}{P}$. This is typically employed after intensive computation operations.
+        \item \textbf{Allgather} gathers values from all ranks and distributes the result of volume $PD$ to all ranks. This is typically
+followed by intensive computation operations.
+    \end{itemize}
+\end{frame}
+
+
+
+\begin{frame}{Background-Different Strategies}
+    
+\begin{columns}
+	\column{0.5\textwidth}
+	\begin{itemize}
+		\item {For scalable SPMD (Single Program, Multiple Data) computation patterns, having communication of minimal cost is good.      
+		}
+		\item {But having unperceived communication is even better!
+		}
+	\end{itemize}\
+	% \bigskip
+	% \bigskip
+	% \bigskip
+	\column{0.5\textwidth}
+	\begin{figure}
+		\centering
+		% Requires \usepackage{graphicx}
+		\includegraphics[width=6cm]{pic/figure3.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+	\end{figure}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Background-Different Strategies (Cont'd)}
+    
+\begin{columns}
+	\column{0.5\textwidth}
+	\begin{itemize}
+		\item {Key insight:  
+		}
+            \begin{itemize}
+                \item Partitioning: Communication inherently is a mapping transformation (primitive) of workload across a group of devices
+            \end{itemize}
+	\end{itemize}\
+	% \bigskip
+	% \bigskip
+	% \bigskip
+	\column{0.5\textwidth}
+	\begin{figure}
+		\centering
+		% Requires \usepackage{graphicx}
+		\includegraphics[width=6cm]{pic/figure3.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+	\end{figure}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Background-Different Strategies (Cont'd)}
+\begin{columns}
+	\column{0.5\textwidth}
+	\begin{itemize}
+		\item {Key insight:  
+		}
+            \begin{itemize}
+                \item Partitioning: Communication inherently is a mapping transformation (primitive) of workload across a group of devices
+            \end{itemize}
+	\end{itemize}\
+	% \bigskip
+	% \bigskip
+	% \bigskip
+	\column{0.5\textwidth}
+	\begin{figure}
+		\centering
+		% Requires \usepackage{graphicx}
+		\includegraphics[width=6cm]{pic/figure4.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+	\end{figure}
+\end{columns}
+\end{frame}
+
+
+\begin{frame}{Background-Different Strategies (Cont'd)}
+\begin{columns}
+	\column{0.5\textwidth}
+	\begin{itemize}
+		\item {Key insight:  
+		}
+            \begin{itemize}
+                \item Scheduling: Training computation patterns can be simplified into three hierarchical tiers: 1) operation, 2) layer, and 3) model
+            \end{itemize}
+	\end{itemize}\
+	% \bigskip
+	% \bigskip
+	% \bigskip
+	\column{0.5\textwidth}
+	\begin{figure}
+		\centering
+		% Requires \usepackage{graphicx}
+		\includegraphics[width=6cm]{pic/figure5.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+	\end{figure}
+\end{columns}
+\end{frame}
+
+
+\section{System Design}
+\begin{frame}{Overview}
+	\begin{figure}
+		\centering
+		% Requires \usepackage{graphicx}
+		\includegraphics[width=\textwidth]{pic/figure6.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+	\end{figure}
+\end{frame}
+% \begin{frame}{Slide title}
+%     \begin{itemize}
+%         \item Items
+%         \begin{itemize}
+%             \item Smaller items.
+%         \end{itemize}
+%         \item Equations
+%         \begin{equation}
+%             a^2+b^2 = c^2
+%         \end{equation}
+%         \item Footnote \footnote{footnote}
+%     \end{itemize}
+% \end{frame}
+
+\begin{frame}{Centauri-Communication Partition-(1) Primitive Partition}
+\begin{columns}
+	\column{0.5\textwidth}
+    Principles:
+	\begin{itemize}
+		\item {Primitive substitution is the first partition dim.}
+            \item {Ensuring performance scalability of collective partition}
+            \item {Rooted collectives may result in contention in root ranks}
+            \item Following the substitution of allreduce with reduce-scatter and allgather, TP and DP evolves into SP and Zero-1,2.
+	\end{itemize}\
+	% \bigskip
+	% \bigskip
+	% \bigskip
+	\column{0.5\textwidth}
+	\begin{figure}
+		\centering
+		% Requires \usepackage{graphicx}
+		\includegraphics[width=6cm]{pic/figure7.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+	\end{figure}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Centauri-Communication Partition-(2) Group Partition}
+\begin{figure}
+	\centering
+        % Requires \usepackage{graphicx}
+		\includegraphics[width=8cm]{pic/figure8.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+\end{figure}
+
+Principles:
+\begin{itemize}
+		\item {No heterogeneous bandwidths within a group.}
+            \item {Do not break up to hardware-algorithm co-design abstraction.}
+            \item {Topology awareness is important.}
+	\end{itemize}
+
+\end{frame}
+
+
+\begin{frame}{Centauri-Communication Partition-(3) Workload Partition}
+\begin{columns}
+\column{0.5\textwidth}
+% \vspace{-2cm}
+\begin{figure}
+	\centering
+        % Requires \usepackage{graphicx}
+		\includegraphics[width=5.5cm]{pic/figure9.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+\end{figure}% 
+Principles:
+\begin{itemize}
+\scriptsize
+		\item {Longer chain of operations for better overlapping.}
+        \item {Compatible partition dimensions within the chain.}
+\end{itemize}
+   \column{0.5\textwidth}
+   
+   \begin{itemize}
+   \scriptsize
+       \item Contraction dimension (CD): Contraction dimensions of operations like MatMuls and Einsums.
+       \item None-split dimension (ND): Coupled computation along this dimension and is not preferable for splitting. It includes reduced dimensions of normalization functions.
+       \item Other dimension (OD): This type encompasses the remaining workload dimensions, such as the batch dimension and none-contraction dimensions of MatMuls.
+   \end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Hierarchical Scheduling-(1) Operation Level}
+	\begin{columns}
+		\column{0.5\textwidth}
+		\scriptsize
+		\begin{itemize}
+			\item a) scheduling with coarse granularity results in a large idle gap (x)
+			\item b) fine granularity scheduling introduces large overhead due to excessive workload partition (x)
+			\item c) scheduling with a group order of large inter-node communication overheads (x)
+			\item d) group partition with a group order of small inter-node and acceptable intra-node communication overheads (x)
+			\item e) the selected partition and scheduling scheme with no idle gaps (group partition and workload partition) (\checkmark)
+		\end{itemize}%
+		\column{0.5\textwidth}
+		\begin{figure}
+			\centering
+			\includegraphics[width=\textwidth]{pic/figure10.png}
+		\end{figure}
+		
+	\end{columns}
+\end{frame}
+
+\begin{frame}{Hierarchical Scheduling-(2) Layer Level}
+	\begin{figure}
+		\centering
+		% Requires \usepackage{graphicx}
+		\includegraphics[width=0.7\textwidth]{pic/figure11.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+	\end{figure}
+\end{frame}
+
+
+\begin{frame}{Hierarchical Scheduling-(3) Model Level}
+	\begin{figure}
+		\centering
+		% Requires \usepackage{graphicx}
+		\includegraphics[width=\textwidth]{pic/figure12.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+	\end{figure}
+\end{frame}
+\section{Experiments}
+\begin{frame}{Evaluation-FSDP, DP}
+	\begin{figure}
+		\centering
+		% Requires \usepackage{graphicx}
+		\includegraphics[width=\textwidth]{pic/figure15.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+	\end{figure}
+\end{frame}
+
+\begin{frame}{Evaluation-Hybrid Parallel}
+	\begin{figure}
+		\centering
+		% Requires \usepackage{graphicx}
+		\includegraphics[width=0.5\textwidth]{pic/figure19.png}%
+        \includegraphics[width=0.5\textwidth]{pic/figure20.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+	\end{figure}
+\end{frame}
+
+\begin{frame}{Evaluation-Scalability}
+	\begin{figure}
+		\centering
+		% Requires \usepackage{graphicx}
+		\includegraphics[width=0.5\textwidth]{pic/figure16.png}%
+        \includegraphics[width=0.5\textwidth]{pic/figure17.png}
+		% \caption{Caption}
+		\label{secert_sharing_figures}
+	\end{figure}
+\end{frame}
+
+% \begin{frame}{Evaluation-FSDP, DP}
+% 	\begin{figure}
+% 		\centering
+% 		% Requires \usepackage{graphicx}
+% 		\includegraphics[width=\textwidth]{pic/figure18.png}
+% 		% \caption{Caption}
+% 		\label{secert_sharing_figures}
+% 	\end{figure}
+%     The theoretical speedup upper bound is min$\{\frac{1}{\alpha}, \frac{1}{1-\alpha}\}$.
+% \end{frame}
+
+\section{Conclusions}
+     \begin{frame}{Future Work}
+     Partitioning:
+     \begin{itemize}
+         \item Collective primitive analysis
+         \item Group partitioning on modern architecture
+         \item Auto-parallel workload partitioning
+     \end{itemize}
+     Scheduling:
+     \begin{itemize}
+         \item Whole graph level cost model scheduling.
+         \item Multiple computation and communication streams scheduling
+         \item Other SPMD scientific computation or MoE tasks.
+     \end{itemize}
+ \end{frame}
+
+\begin{frame}
+    \begin{center}
+        {\Huge\calligra Thanks!}
+    \end{center}
+\end{frame}
+
+\end{document}
